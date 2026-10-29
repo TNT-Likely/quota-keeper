@@ -4,13 +4,8 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/color"
-	"image/draw"
-	"image/png"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,8 +42,10 @@ type WindowInfo struct {
 }
 
 type ModelState struct {
-	Kind    string      `json:"kind"`
-	Primary *WindowInfo `json:"primary"`
+	Kind      string      `json:"kind"`
+	Primary   *WindowInfo `json:"primary"`
+	Secondary *WindowInfo `json:"secondary"`
+	NextEvent *time.Time  `json:"next_event,omitempty"`
 }
 
 type QKState struct {
@@ -98,29 +95,11 @@ func openFile(p string) {
 	_ = c.Start()
 }
 
-// iconPNG 用标准库现画一个琥珀底、深色时钟指针的 32x32 图标。
-func iconPNG() []byte {
-	img := image.NewRGBA(image.Rect(0, 0, 32, 32))
-	bg := color.RGBA{R: 245, G: 166, B: 35, A: 255}
-	draw.Draw(img, img.Bounds(), &image.Uniform{bg}, image.Point{}, draw.Src)
-	fg := color.RGBA{R: 40, G: 40, B: 40, A: 255}
-	for x := 15; x <= 17; x++ {
-		for y := 7; y <= 17; y++ {
-			img.Set(x, y, fg)
-		}
-	}
-	for x := 17; x <= 24; x++ {
-		for y := 13; y <= 15; y++ {
-			img.Set(x, y, fg)
-		}
-	}
-	var b bytes.Buffer
-	_ = png.Encode(&b, img)
-	return b.Bytes()
-}
+// ---------- 托盘 ----------
 
 var (
 	mStatus *systray.MenuItem
+	mNext   *systray.MenuItem
 	mTrig   *systray.MenuItem
 	mToggle *systray.MenuItem
 	mLog    *systray.MenuItem
@@ -132,11 +111,13 @@ func main() {
 }
 
 func onReady() {
-	systray.SetIcon(iconPNG())
+	systray.SetTemplateIcon(iconTemplate, iconColor)
 	systray.SetTitle("QK")
 	systray.SetTooltip("quota-keeper")
 	mStatus = systray.AddMenuItem("", "")
 	mStatus.Disable()
+	mNext = systray.AddMenuItem("", "")
+	mNext.Disable()
 	systray.AddSeparator()
 	mTrig = systray.AddMenuItem("立即触发", "立即发送一次最小请求")
 	mToggle = systray.AddMenuItem("暂停守护", "暂停/恢复自动触发")
@@ -183,6 +164,7 @@ func updateMenu() {
 	s := readState()
 	if s == nil || len(s.Models) == 0 {
 		mStatus.SetTitle("… 无状态(先跑 once)")
+		mNext.SetTitle("下次触发 待检测")
 		return
 	}
 	for _, ms := range s.Models {
@@ -204,6 +186,16 @@ func updateMenu() {
 			mStatus.SetTitle("⏳ " + line)
 		default:
 			mStatus.SetTitle("… " + line)
+		}
+		if ms.NextEvent != nil {
+			ne := *ms.NextEvent
+			d := ne.Sub(now)
+			if d < 0 {
+				d = 0
+			}
+			mNext.SetTitle(fmt.Sprintf("下次触发 %s(%s后)", ne.Format("15:04"), humanShort(d)))
+		} else {
+			mNext.SetTitle("下次触发 待检测")
 		}
 		break // 只展示第一个模型
 	}

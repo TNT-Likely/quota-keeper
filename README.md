@@ -1,86 +1,95 @@
-# quota-keeper
+<div align="center">
+  <img src="assets/icon-256.png" width="96" alt="quota-keeper logo"/>
+  <h1>quota-keeper</h1>
+  <p><b>Keep your Codex 5-hour rate-limit window anchored — automatically.</b></p>
+  <p><a href="README.md">English</a> · <a href="README.zh-CN.md">简体中文</a></p>
+  <p>
+    <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green.svg"></a>
+    <img alt="Go 1.24+" src="https://img.shields.io/badge/Go-1.24%2B-00ADD8?logo=go&amp;logoColor=white">
+    <a href="../../actions/workflows/release.yml"><img alt="release" src="https://github.com/TNT-Likely/quota-keeper/actions/workflows/release.yml/badge.svg"></a>
+  </p>
+</div>
 
-为 ChatGPT Plus 等订阅的 Codex **5 小时限额窗口**做自动检测与自动补锚的本地命令行小工具。Go 实现，单二进制，零第三方依赖（纯标准库）。
+quota-keeper is a tiny Go CLI + tray app that **automatically detects and re-anchors the 5-hour usage window** of ChatGPT/Codex subscriptions. Single binary, daemon core with zero third-party dependencies.
 
-## 为什么需要它
+## Why
 
-Codex 订阅的 5 小时限额窗口何时重置由服务端决定，只有发起请求才能从响应头拿到权威的重置时刻。用固定 cron 猜重置点，猜错就白白浪费窗口起锚时间。quota-keeper 直接读官方响应头里的 `x-codex-primary-*` / `x-codex-secondary-*` 限额字段，在窗口重置后精准补一发最小请求，让每一轮窗口都从可控时刻开始。
+The 5-hour window of a Codex subscription resets at a time decided **server-side** — you only learn it from response headers when making a request. Guessing the reset with a fixed cron wastes the beginning of every window. quota-keeper reads the authoritative `x-codex-primary-*` (5h) and `x-codex-secondary-*` (weekly) rate-limit headers, then fires a minimal request right after each reset, so every window starts at a moment you control.
 
-- **自动检测**：每次请求解析 5h / 周窗口的用量百分比与重置时刻（服务端权威值，非估算）
-- **自动补锚**：窗口重置后自动触发，重置与续锚无缝衔接；可选每日固定锚点兜底
-- **凭据免配置**：复用本机 [Codex CLI](https://github.com/openai/codex) 登录态（`~/.codex/auth.json`）；token 过期自动用 refresh_token 刷新并安全写回
-- **多模型**：配置多个模型分别跟踪窗口状态
-- **隐私**：凭据只在本机读写，不上传、不入库
+- **Auto-detect** — parses 5h / weekly usage percent and reset time from every response (server-side authoritative values, not estimates)
+- **Auto re-anchor** — triggers right after each window reset; optional daily anchors as a fallback
+- **Zero-config credentials** — reuses the local [Codex CLI](https://github.com/openai/codex) login (`~/.codex/auth.json`); expired access tokens are refreshed automatically with the refresh token
+- **Multi-model** — track any number of models independently
+- **Cross-platform tray console** — macOS menu bar / Windows tray / Linux AppIndicator: live status, trigger-now, pause/resume, log viewer
+- **Privacy** — credentials never leave your machine; nothing is uploaded or committed
 
-> ⚠️ 免责声明：本工具调用的是 ChatGPT 后端的非公开接口，接口形态可能随官方版本变化；请自行评估风险并遵守 OpenAI 服务条款。
+> ⚠️ **Disclaimer**: quota-keeper talks to a non-public ChatGPT backend endpoint. The interface may change with future Codex releases. Use at your own risk and follow OpenAI's terms of service.
 
-## 安装
+## Install
 
 ```bash
 go install github.com/TNT-Likely/quota-keeper@latest
 ```
 
-或从 [Releases](../../releases) 下载对应平台二进制，或自行构建：
+or grab a binary from [Releases](../../releases) (daemon + tray for macOS / Windows / Linux), or build from source:
 
 ```bash
-go build -o quota-keeper .
+go build -o quota-keeper .            # daemon / CLI (stdlib only)
+go build -o quota-keeper-tray ./tray  # tray console (uses fyne.io/systray)
 ```
 
-前提：本机已用 Codex CLI 登录过（存在 `~/.codex/auth.json`）。
+Prerequisite: log in with the Codex CLI at least once (`~/.codex/auth.json` exists).
 
-## 快速开始
+## Quick start
 
 ```bash
 mkdir -p ~/.config/quota-keeper
 cp config.example.json ~/.config/quota-keeper/config.json
-$EDITOR ~/.config/quota-keeper/config.json
-quota-keeper once
-quota-keeper status
+$EDITOR ~/.config/quota-keeper/config.json   # set models and anchors
+quota-keeper once     # run one detection cycle
+quota-keeper status   # inspect window state and next action
 ```
 
-## 命令
+## Commands
 
-| 命令 | 说明 |
+| Command | Description |
 | --- | --- |
-| `run` | 常驻守护：到点（锚点/窗口重置时刻）自动触发，建议配 launchd/systemd |
-| `once` | 执行一轮检测后退出 |
-| `trigger [模型]` | 立即触发一次（默认取配置第一个模型） |
-| `status` | 查看各模型窗口状态、倒计时与下次动作 |
-| `refresh-token` | 手动刷新登录凭据并写回 auth.json |
-| `pause` / `resume` | 暂停/恢复自动触发（写入/删除 paused 标记文件） |
+| `run` | Resident daemon: triggers at anchors / window resets (pair with launchd/systemd) |
+| `once` | Run one detection cycle and exit |
+| `trigger [model]` | Trigger once, right now (defaults to the first configured model) |
+| `status` | Show window state, countdowns and the next action per model |
+| `refresh-token` | Force-refresh the credentials and write auth.json back |
+| `pause` / `resume` | Pause/resume auto-triggering (paused marker file) |
 
-## 调度策略
+## Scheduling
 
-对每个被跟踪的模型，`run` 守护在以下两个时刻的**较早者**发起触发：
+For each tracked model the daemon fires at the **earlier** of:
 
-1. **窗口重置点 + 缓冲秒**（默认 60s）：来自服务端 `x-codex-primary-reset-at` 响应头。上一窗口若已耗尽（429），重置后立即补锚；若未耗尽，到点重锚一次让窗口继续成链。
-2. **固定锚点**（可选）：每天固定时刻兜底，防止状态丢失后长时间无人触发。
+1. **Window reset + buffer** (default 60s): from the server's `x-codex-primary-reset-at` header. If the previous window was exhausted (429), the fresh window is anchored immediately after the reset; if not, one minimal request keeps the chain going.
+2. **Daily anchors** (optional): fixed `HH:MM` moments as a fallback, so the account is never left unanchored for long.
 
-401 时自动刷新凭据并重试一次；网络错误按 `error_retry_seconds` 退避；pid 文件防止多实例。
+A 401 automatically refreshes the credentials and retries once; network errors back off for `error_retry_seconds`; a pid file prevents duplicate daemons.
 
-> 服务端语义：重置时刻在窗口**首次请求**时即固定，窗口内重复触发不会顺延它；因此自动续链会在每次重置后尽早补锚，锚点配置只作兜底。
+> Server semantics: the reset time is fixed by the **first request** of a window — extra requests inside the window do not extend it. The chain therefore re-anchors shortly after every reset, and the anchor config is only a fallback.
 
-## 状态栏/托盘控制台（可选）
+## Tray console (optional)
 
-`quota-keeper-tray` 是同仓库的跨平台托盘程序（macOS 菜单栏 / Windows 托盘 / Linux AppIndicator）：
+`quota-keeper-tray` is a cross-platform tray app in the same repository (macOS menu bar / Windows tray / Linux AppIndicator):
 
-- 托盘常显窗口状态（✓/⏳ + 5h 用量 + 重置倒计时，30 秒刷新）
-- 立即触发 / 暂停守护 / 恢复守护 / 打开日志（触发记录）/ 退出托盘
+- Always-visible status: ✓/⏳ + 5h usage + reset countdown + **next trigger time** (refreshed every 30s)
+- Trigger now / Pause daemon / Resume daemon / Open log (trigger history) / Quit
 
-构建（守护进程纯标准库零依赖；托盘仅依赖 [fyne.io/systray](https://github.com/fyne-io/systray)）：
+Icons are embedded as generated source (`tray/icon_data.go`); after replacing `tray/*.png`, regenerate with:
 
 ```bash
-go build -o quota-keeper .            # 守护
-go build -o quota-keeper-tray ./tray  # 托盘
+go run ./tools/gen_icon_data
 ```
 
-> macOS 提示：托盘需要 cgo。若 CommandLineTools 与 SDK 版本错位（报 `tapi error: unknown architecture`），用 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer go build ./tray` 指定完整 Xcode 工具链。
+> macOS tip: building the tray needs cgo. If your CommandLineTools and SDK are mismatched (`tapi error: unknown architecture`), point the build at a full Xcode: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer go build ./tray`.
 
-托盘的"暂停/恢复"与 CLI 的 `pause`/`resume` 操作的是同一个 paused 标记文件，可混用。
+## Autostart (macOS launchd)
 
-## macOS launchd 常驻
-
-`~/Library/LaunchAgents/dev.tnt.quota-keeper.plist`：
+`~/Library/LaunchAgents/dev.tnt.quota-keeper.plist`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -111,31 +120,34 @@ go build -o quota-keeper-tray ./tray  # 托盘
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.tnt.quota-keeper.plist
 ```
 
-## 配置项
+(The tray can be started the same way with `RunAtLoad` and `KeepAlive` set to `false`.)
 
-| 字段 | 默认 | 说明 |
+## Configuration
+
+| Field | Default | Description |
 | --- | --- | --- |
-| `models` | `["gpt-5.6-luna"]` | 要跟踪/触发的模型列表 |
-| `anchors` | 空 | 每日固定锚点 `["HH:MM", ...]`，不需要就删掉 |
-| `auth_path` | `~/.codex/auth.json` | Codex CLI 凭据路径 |
-| `state_path` | `~/.local/state/quota-keeper/state.json` | 状态文件 |
-| `log_path` | `~/.local/state/quota-keeper/quota-keeper.log` | 日志文件 |
-| `endpoint` | ChatGPT Codex 后端 | 请求端点 |
-| `window_minutes` | `300` | 服务端未返回窗口长度时的兜底值 |
-| `refresh_buffer_seconds` | `60` | 重置点之后延迟多少秒再触发 |
-| `error_retry_seconds` | `300` | 出错后的重试间隔 |
-| `tick_seconds` | `20` | 守护循环轮询间隔 |
+| `models` | `["gpt-5.6-luna"]` | Models to track / trigger |
+| `anchors` | empty | Daily anchors `["HH:MM", ...]`; delete if you don't need them |
+| `auth_path` | `~/.codex/auth.json` | Codex CLI credentials path |
+| `state_path` | `~/.local/state/quota-keeper/state.json` | State file (includes `next_event`) |
+| `log_path` | `~/.local/state/quota-keeper/quota-keeper.log` | Log file |
+| `endpoint` | ChatGPT Codex backend | Request endpoint |
+| `window_minutes` | `300` | Fallback window length when the server doesn't send one |
+| `refresh_buffer_seconds` | `60` | Delay after the reset point before triggering |
+| `error_retry_seconds` | `300` | Retry interval after errors |
+| `tick_seconds` | `20` | Daemon loop interval |
+
+## Privacy & security
+
+Credentials are read and written locally only (`auth.json` and `config.json` should stay `0600`). `config.json`, state, logs and generated binaries are git-ignored and never leave your machine.
 
 ## Roadmap
 
-- [x] 跨平台状态栏控制台（tray/）
-- [ ] Claude provider（读钥匙串凭据，anthropic oauth）
-- [ ] CLIProxyAPI transport（凭据不在本机、经代理转发的场景）
-
-## English
-
-quota-keeper is a tiny Go CLI that keeps your ChatGPT/Codex subscription's 5-hour rate-limit window anchored. It talks directly to the Codex backend using your local Codex CLI login (`~/.codex/auth.json`), reads the authoritative `x-codex-*` rate-limit headers, and fires a minimal request right after each window resets, so no time is lost to an unanchored window. Token refresh is automatic; fixed daily anchors are optional. See the sections above for install, config and commands.
+- [x] Cross-platform tray console
+- [ ] Claude provider (Keychain credentials, Anthropic OAuth)
+- [ ] CLIProxyAPI transport (for credentials that live behind a proxy)
+- [ ] Autostart helpers for Windows / Linux
 
 ## License
 
-MIT
+[MIT](LICENSE)

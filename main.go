@@ -323,6 +323,7 @@ type ModelState struct {
 	LastStatus  int         `json:"last_status"`
 	LastCheck   time.Time   `json:"last_check"`
 	LastTrigger *time.Time  `json:"last_trigger,omitempty"`
+	NextEvent   *time.Time  `json:"next_event,omitempty"` // 调度器算出的下次触发时刻，供托盘/外部展示
 	LastDetail  string      `json:"last_detail,omitempty"`
 }
 
@@ -430,6 +431,23 @@ func nextEventFor(cfg *Config, st *State, model string) time.Time {
 		return t
 	default: // error 等
 		return ms.LastCheck.Add(time.Duration(cfg.ErrorRetrySec) * time.Second)
+	}
+}
+
+// updateNextEvents 把每个模型下次触发时刻写入状态，供托盘与外部读取展示。
+func updateNextEvents(cfg *Config, st *State) {
+	for _, model := range cfg.Models {
+		ms := st.Models[model]
+		if ms == nil {
+			continue
+		}
+		ne := nextEventFor(cfg, st, model)
+		if ne.IsZero() {
+			ms.NextEvent = nil
+			continue
+		}
+		t := ne
+		ms.NextEvent = &t
 	}
 }
 
@@ -600,6 +618,7 @@ func cmdRun(cfg *Config) {
 				paused = false
 			}
 			fireDue(cfg, st, "")
+			updateNextEvents(cfg, st)
 			saveState(cfg.StatePath, st)
 		}
 		time.Sleep(time.Duration(cfg.TickSeconds) * time.Second)
@@ -609,6 +628,7 @@ func cmdRun(cfg *Config) {
 func cmdOnce(cfg *Config) {
 	st := loadState(cfg.StatePath)
 	fireDue(cfg, st, "")
+	updateNextEvents(cfg, st)
 	saveState(cfg.StatePath, st)
 	printStatus(cfg, st)
 }
@@ -625,6 +645,7 @@ func cmdTrigger(cfg *Config, model string) {
 	}
 	st := loadState(cfg.StatePath)
 	fireDue(cfg, st, model)
+	updateNextEvents(cfg, st)
 	saveState(cfg.StatePath, st)
 	printStatus(cfg, st)
 }

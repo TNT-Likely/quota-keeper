@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#22262E"/>
+  <path d="M126 201 A150 150 0 0 1 386 201" fill="none" stroke="#D97757" stroke-width="26" stroke-linecap="round"/>
+  <path d="M386 351 A150 150 0 0 1 126 351" fill="none" stroke="#10A37F" stroke-width="26" stroke-linecap="round"/>
+  <text x="256" y="330" font-family="Helvetica, Arial, sans-serif" font-size="150" font-weight="800" fill="#ffffff" text-anchor="middle">QK</text>
+</svg>
