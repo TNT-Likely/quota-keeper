@@ -111,8 +111,9 @@ func main() {
 }
 
 func onReady() {
-	// 菜单栏只显示图标(template), 不加文字标题
-	systray.SetTemplateIcon(iconTemplate, iconColor)
+	// 菜单栏显示彩色 logo(琥珀圆角方块); 若想跟随系统深浅色自动反白,
+	// 改回 systray.SetTemplateIcon(iconTemplate, iconColor) 即可
+	systray.SetIcon(iconColor)
 	systray.SetTooltip("quota-keeper")
 	mStatus = systray.AddMenuItem("", "")
 	mStatus.Disable()
