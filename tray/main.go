@@ -111,8 +111,8 @@ func main() {
 }
 
 func onReady() {
+	// 菜单栏只显示图标(template), 不加文字标题
 	systray.SetTemplateIcon(iconTemplate, iconColor)
-	systray.SetTitle("QK")
 	systray.SetTooltip("quota-keeper")
 	mStatus = systray.AddMenuItem("", "")
 	mStatus.Disable()

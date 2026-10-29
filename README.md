@@ -79,10 +79,10 @@ A 401 automatically refreshes the credentials and retries once; network errors b
 - Always-visible status: ✓/⏳ + 5h usage + reset countdown + **next trigger time** (refreshed every 30s)
 - Trigger now / Pause daemon / Resume daemon / Open log (trigger history) / Quit
 
-Icons are embedded as generated source (`tray/icon_data.go`); after replacing `tray/*.png`, regenerate with:
+Icons are rasterized by `tools/gen_icons` (stdlib-only, supersampled, transparent background) and embedded as generated source (`tray/icon_data.go`); after changing the icon geometry, regenerate with:
 
 ```bash
-go run ./tools/gen_icon_data
+go run ./tools/gen_icons && go run ./tools/gen_icon_data
 ```
 
 > macOS tip: building the tray needs cgo. If your CommandLineTools and SDK are mismatched (`tapi error: unknown architecture`), point the build at a full Xcode: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer go build ./tray`.

@@ -79,10 +79,10 @@ quota-keeper status   # 查看状态与下次动作
 - 托盘常显状态：✓/⏳ + 5h 用量 + 重置倒计时 + **下次触发时间**（30 秒刷新）
 - 立即触发 / 暂停守护 / 恢复守护 / 打开日志（触发记录）/ 退出托盘
 
-图标以内嵌生成代码（`tray/icon_data.go`）打进二进制；替换 `tray/*.png` 后重新生成：
+图标由 `tools/gen_icons`（标准库光栅化，超采样抗锯齿，透明背景）生成 PNG，再经 `tray/icon_data.go` 内嵌进二进制；改完图标几何后重新生成：
 
 ```bash
-go run ./tools/gen_icon_data
+go run ./tools/gen_icons && go run ./tools/gen_icon_data
 ```
 
 > macOS 提示：托盘需要 cgo。若 CommandLineTools 与 SDK 版本错位（报 `tapi error: unknown architecture`），用 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer go build ./tray` 指定完整 Xcode 工具链。
