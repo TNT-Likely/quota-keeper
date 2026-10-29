@@ -47,6 +47,7 @@ quota-keeper status
 | `trigger [模型]` | 立即触发一次（默认取配置第一个模型） |
 | `status` | 查看各模型窗口状态、倒计时与下次动作 |
 | `refresh-token` | 手动刷新登录凭据并写回 auth.json |
+| `pause` / `resume` | 暂停/恢复自动触发（写入/删除 paused 标记文件） |
 
 ## 调度策略
 
@@ -56,6 +57,26 @@ quota-keeper status
 2. **固定锚点**（可选）：每天固定时刻兜底，防止状态丢失后长时间无人触发。
 
 401 时自动刷新凭据并重试一次；网络错误按 `error_retry_seconds` 退避；pid 文件防止多实例。
+
+> 服务端语义：重置时刻在窗口**首次请求**时即固定，窗口内重复触发不会顺延它；因此自动续链会在每次重置后尽早补锚，锚点配置只作兜底。
+
+## 状态栏/托盘控制台（可选）
+
+`quota-keeper-tray` 是同仓库的跨平台托盘程序（macOS 菜单栏 / Windows 托盘 / Linux AppIndicator）：
+
+- 托盘常显窗口状态（✓/⏳ + 5h 用量 + 重置倒计时，30 秒刷新）
+- 立即触发 / 暂停守护 / 恢复守护 / 打开日志（触发记录）/ 退出托盘
+
+构建（守护进程纯标准库零依赖；托盘仅依赖 [fyne.io/systray](https://github.com/fyne-io/systray)）：
+
+```bash
+go build -o quota-keeper .            # 守护
+go build -o quota-keeper-tray ./tray  # 托盘
+```
+
+> macOS 提示：托盘需要 cgo。若 CommandLineTools 与 SDK 版本错位（报 `tapi error: unknown architecture`），用 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer go build ./tray` 指定完整 Xcode 工具链。
+
+托盘的"暂停/恢复"与 CLI 的 `pause`/`resume` 操作的是同一个 paused 标记文件，可混用。
 
 ## macOS launchd 常驻
 
@@ -107,9 +128,9 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.tnt.quota-keeper.pli
 
 ## Roadmap
 
+- [x] 跨平台状态栏控制台（tray/）
 - [ ] Claude provider（读钥匙串凭据，anthropic oauth）
 - [ ] CLIProxyAPI transport（凭据不在本机、经代理转发的场景）
-- [ ] macOS 菜单栏 GUI
 
 ## English
 

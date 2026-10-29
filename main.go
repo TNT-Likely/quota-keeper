@@ -550,6 +550,34 @@ func firstJSONField(body, field string) string {
 	return truncate(body, 120)
 }
 
+// ---------- 暂停/恢复 ----------
+
+func pausedPath(cfg *Config) string {
+	return filepath.Join(filepath.Dir(cfg.StatePath), "paused")
+}
+
+func isPaused(cfg *Config) bool {
+	_, err := os.Stat(pausedPath(cfg))
+	return err == nil
+}
+
+func cmdPause(cfg *Config) {
+	_ = os.MkdirAll(filepath.Dir(pausedPath(cfg)), 0o700)
+	if err := os.WriteFile(pausedPath(cfg), []byte(time.Now().Format(time.RFC3339)), 0o600); err != nil {
+		fmt.Println("暂停失败:", err)
+		os.Exit(1)
+	}
+	logf(cfg, "守护已暂停，自动触发停用(手动 trigger 仍可用)")
+}
+
+func cmdResume(cfg *Config) {
+	if err := os.Remove(pausedPath(cfg)); err != nil && !os.IsNotExist(err) {
+		fmt.Println("恢复失败:", err)
+		os.Exit(1)
+	}
+	logf(cfg, "守护已恢复，自动触发重新生效")
+}
+
 // ---------- 命令 ----------
 
 func cmdRun(cfg *Config) {
@@ -559,9 +587,21 @@ func cmdRun(cfg *Config) {
 	}
 	logf(cfg, "quota-keeper %s 启动 (pid %d)，模型 %v，锚点 %v", version, os.Getpid(), cfg.Models, cfg.Anchors)
 	st := loadState(cfg.StatePath)
+	paused := isPaused(cfg)
 	for {
-		fireDue(cfg, st, "")
-		saveState(cfg.StatePath, st)
+		if isPaused(cfg) {
+			if !paused {
+				logf(cfg, "守护进入暂停，自动触发停用")
+				paused = true
+			}
+		} else {
+			if paused {
+				logf(cfg, "守护从暂停中恢复")
+				paused = false
+			}
+			fireDue(cfg, st, "")
+			saveState(cfg.StatePath, st)
+		}
 		time.Sleep(time.Duration(cfg.TickSeconds) * time.Second)
 	}
 }
@@ -602,6 +642,9 @@ func printStatus(cfg *Config, st *State) {
 			continue
 		}
 		fmt.Printf("  状态: %s | 上次 HTTP %d @ %s\n", ms.Kind, ms.LastStatus, ms.LastCheck.Format("01-02 15:04:05"))
+		if isPaused(cfg) {
+			fmt.Println("  守护: 已暂停(自动触发停用，恢复用 quota-keeper resume)")
+		}
 		if ms.PlanType != "" {
 			fmt.Printf("  套餐: %s\n", ms.PlanType)
 		}
@@ -646,6 +689,8 @@ func usage() {
   quota-keeper trigger [模型]   立即触发一次(默认取配置第一个模型)
   quota-keeper status          查看各模型窗口状态与下次动作
   quota-keeper refresh-token   强制刷新登录凭据并写回 auth.json
+  quota-keeper pause           暂停自动触发(写入 paused 标记)
+  quota-keeper resume          恢复自动触发
   quota-keeper help            本说明
 
 配置: ~/.config/quota-keeper/config.json (见仓库 config.example.json)
@@ -678,6 +723,10 @@ func main() {
 		cmdStatus(cfg)
 	case "refresh-token":
 		cmdRefreshToken(cfg)
+	case "pause":
+		cmdPause(cfg)
+	case "resume":
+		cmdResume(cfg)
 	case "help", "-h", "--help":
 		usage()
 	default:

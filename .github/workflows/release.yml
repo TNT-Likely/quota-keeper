@@ -9,23 +9,78 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "stable"
-      - name: Build all platforms
+      - name: Build
         run: |
           mkdir -p dist
-          for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64 windows-amd64; do
+          for t in linux-amd64 linux-arm64; do
             os=${t%-*}; arch=${t#*-}
-            out="dist/quota-keeper-$t"
-            [ "$os" = "windows" ] && out="$out.exe"
-            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "$out" .
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-$t" .
           done
-          cd dist && sha256sum * > checksums.txt
+          # 托盘: linux 走 dbus/cgo, 仅构建 amd64
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-tray-linux-amd64" ./tray
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+  macos:
+    needs: linux
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+      - name: Build
+        run: |
+          mkdir -p dist
+          for t in darwin-arm64 darwin-amd64; do
+            os=${t%-*}; arch=${t#*-}
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-$t" .
+            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-tray-$t" ./tray
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+  windows:
+    needs: macos
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+      - name: Build
+        shell: bash
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o dist/quota-keeper-windows-amd64.exe .
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME}" -o dist/quota-keeper-tray-windows-amd64.exe ./tray
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+  publish:
+    needs: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-all
+      - name: Collect and publish
+        run: |
+          cd dist-all
+          for d in */; do cp "$d"/* .; done
+          sha256sum quota-keeper* > checksums.txt
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist-all/quota-keeper*
+            dist-all/checksums.txt
