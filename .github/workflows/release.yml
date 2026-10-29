@@ -23,8 +23,8 @@ jobs:
             os=${t%-*}; arch=${t#*-}
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-$t" .
           done
-          # 托盘: linux 走 dbus/cgo, 仅构建 amd64
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-tray-linux-amd64" ./tray
+          # 托盘: linux 走 dbus/cgo, 仅构建 amd64 (显式开 CGO)
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-tray-linux-amd64" ./tray
       - uses: actions/upload-artifact@v4
         with:
           name: linux
@@ -43,7 +43,8 @@ jobs:
           for t in darwin-arm64 darwin-amd64; do
             os=${t%-*}; arch=${t#*-}
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-$t" .
-            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-tray-$t" ./tray
+            # 交叉编译时 Go 默认关 cgo, 托盘必须显式开启
+            CGO_ENABLED=1 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/quota-keeper-tray-$t" ./tray
           done
       - uses: actions/upload-artifact@v4
         with:
@@ -62,7 +63,7 @@ jobs:
         run: |
           mkdir -p dist
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o dist/quota-keeper-windows-amd64.exe .
-          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-X main.version=${GITHUB_REF_NAME}" -o dist/quota-keeper-tray-windows-amd64.exe ./tray
+          CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" -o dist/quota-keeper-tray-windows-amd64.exe ./tray
       - uses: actions/upload-artifact@v4
         with:
           name: windows
