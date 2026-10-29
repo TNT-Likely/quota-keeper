@@ -1,0 +1,8 @@
+/config.json
+/state.json
+/quota-keeper
+/quota-keeper-*
+*.exe
+*.log
+*.pid
+.DS_Store

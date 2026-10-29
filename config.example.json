@@ -1,0 +1,11 @@
+{
+  "models": ["gpt-5.6-luna"],
+  "anchors": ["05:46", "10:50", "15:54", "21:00"],
+  "auth_path": "~/.codex/auth.json",
+  "state_path": "~/.local/state/quota-keeper/state.json",
+  "log_path": "~/.local/state/quota-keeper/quota-keeper.log",
+  "window_minutes": 300,
+  "refresh_buffer_seconds": 60,
+  "error_retry_seconds": 300,
+  "tick_seconds": 20
+}
